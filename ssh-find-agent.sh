@@ -45,7 +45,7 @@ fi
 
 sfa_die() {
   sfa_debug_print "$@"
-  exit 1
+  break 20
 }
 
 sfa_debug_print() {
