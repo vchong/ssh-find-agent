@@ -49,7 +49,7 @@ sfa_die() {
 }
 
 sfa_debug_print() {
-  if [[ $_DEBUG -gt 0 ]]; then
+  if (( _DEBUG > 0 )); then
     # shellcheck disable=SC2059
     printf "$@" 1>&2
   fi
@@ -57,9 +57,9 @@ sfa_debug_print() {
 
 sfa_find_all_agent_sockets() {
   _ssh_agent_sockets=$(
-    find "$_TMPDIR" -maxdepth 2 -type s  -name agent.\*              2>/dev/null | grep '/ssh-.*/agent.*';
-    find "$_TMPDIR" -maxdepth 2 -type s  -name S.gpg-agent.ssh       2>/dev/null | grep '/gpg-.*/S.gpg-agent.ssh';
-    find "$_TMPDIR" -maxdepth 2 -type s  -name ssh                   2>/dev/null | grep '/keyring-.*/ssh$';
+    find "$_TMPDIR" -maxdepth 2 -type s -name agent.\* 2>/dev/null | grep '/ssh-.*/agent.*'
+    find "$_TMPDIR" -maxdepth 2 -type s -name S.gpg-agent.ssh 2>/dev/null | grep '/gpg-.*/S.gpg-agent.ssh'
+    find "$_TMPDIR" -maxdepth 2 -type s -name ssh 2>/dev/null | grep '/keyring-.*/ssh$'
     find "$_TMPDIR" -maxdepth 2 -type s -regex '.*/ssh-.*/agent..*$' 2>/dev/null
   )
   sfa_debug_print "$_ssh_agent_sockets"
@@ -81,26 +81,27 @@ sfa_test_agent_socket() {
       # contactible but no keys loaded
       _key_count=0
       ;;
-    2|124)
+    2 | 124)
       # socket is dead, delete it
       rm -rf "${socket%/*}" 1>/dev/null 2>&1
       ;;
-    125|126|127)
+    125 | 126 | 127)
       printf 'timeout returned <%s>\n' "$result" 1>&2
       ;;
     *)
       printf 'Unknown failure timeout returned <%s>\n' "$result" 1>&2
+      ;;
   esac
 
   case $result in
-    0|1)
+    0 | 1)
       _live_agent_list+=("$_key_count:$socket")
       return 0
+      ;;
   esac
 
   return 1
 }
-
 
 sfa_verify_sockets() {
   for i in $_ssh_agent_sockets; do
@@ -108,7 +109,7 @@ sfa_verify_sockets() {
   done
 }
 
-function fingerprints() {
+sfa_fingerprints() {
   local file="$1"
   while read -r l; do
     [[ -n "$l" && ${l##\#} = "$l" ]] && ssh-keygen -l -f /dev/stdin <<<"$l"
@@ -116,35 +117,36 @@ function fingerprints() {
 }
 
 sfa_print_choose_menu() {
-  _show_identity=0
-  if [ "$1" = "-i" ]; then
-    _show_identity=1
-  fi
+  # find all the apparent socket files
+  # the sockets go into $_ssh_agent_sockets[]
   sfa_find_all_agent_sockets
+
+  # verify each socket, discarding if dead
+  # the live sockets go into $_live_agent_list[]
   sfa_verify_sockets
   sfa_debug_print '<%s>\n' "${_live_agent_list[@]}"
 
   # shellcheck disable=SC2207
   IFS=$'\n' _sorted_live_agent_list=($(sort -u <<<"${_live_agent_list[*]}"))
   unset IFS
-  
+
   sfa_debug_print "SORTED:\n"
   sfa_debug_print '    <%s>\n' "${_sorted_live_agent_list[@]}"
 
   local i=0
   local sock
 
-    for a in "${_sorted_live_agent_list[@]}"; do
-      i=$((i + 1))
-      sock=${a/*:/}
+  for agent in "${_sorted_live_agent_list[@]}"; do
+    i=$((i + 1))
+    sock=${agent/*:/}
+    if [[ "$1" = "-i" ]]; then
       _live_agent_sock_list[$i]=$sock
 
       printf '#%i)\n' "$i"
       printf '    export SSH_AUTH_SOCK=%s\n' "$sock"
-      if [[ $_show_identity -gt 0 ]]; then
-        # Get all the forwarded keys for this agent, parse them and print them
-      SSH_AUTH_SOCK=$sock ssh-add -l 2>&1 | \
-        grep -v 'error fetching identities for protocol 1: agent refused operation' | \
+      # Get all the forwarded keys for this agent, parse them and print them
+      SSH_AUTH_SOCK=$sock ssh-add -l 2>&1 |
+        grep -v 'error fetching identities for protocol 1: agent refused operation' |
         while IFS= read -r key; do
           parts=("$key")
           key_size="${parts[0]}"
@@ -153,40 +155,37 @@ sfa_print_choose_menu() {
           key_type="${parts[3]}"
           printf '        %s %s\t%s\t%s\n' "$key_size" "$key_type" "$remote_name" "$fingerprint"
         done
-      else
-        printf "%s\n" "${_sorted_live_agent_list[@]}"
-      fi
-    done
+    else
+      printf '%s\n' "$sock"
+    fi
+  done
 }
 
-set_ssh_agent_socket() {
-  if [[ "$1" = "-c" ]] || [[ "$1" = "--choose" ]]; then
-    sfa_print_choose_menu -i
+sfa_set_ssh_agent_socket() {
+  case $1 in
+    -c | --choose)
+      sfa_print_choose_menu -i
 
-    if (( 0 == ${#_live_agent_list[@]} )); then
-      sfa_die 'No agents found.\n'
-      return 1
-    fi
+      ((0 == ${#_live_agent_list[@]})) && sfa_die 'No agents found.\n'
 
-    read -p "Choose (1-${#_live_agent_sock_list[@]})? " -r choice
-    if [ -n "$choice" ]; then
-      n=$((choice - 1))
-      if [ -z "${_live_agent_sock_list[$n]}" ]; then
-        sfa_die 'Invalid choice.\n'
+      read -p "Choose (1-${#_live_agent_sock_list[@]})? " -r choice
+      if [ "$choice" -eq "$choice" ]; then
+        [[ -z "${_live_agent_sock_list[$choice]}" ]] && sfa_die 'Invalid choice.\n'
+        printf 'Setting export SSH_AUTH_SOCK=%s\n' "${_live_agent_sock_list[$choice]}"
+        export SSH_AUTH_SOCK=${_live_agent_sock_list[$choice]}
       fi
-      printf 'Setting export SSH_AUTH_SOCK=%s\n' "${_live_agent_sock_list[$n]}"
-      export SSH_AUTH_SOCK=${_live_agent_sock_list[$n]}
-    fi
-  else
-    # Choose the first available
-    SOCK=$(sfa_print_choose_menu | tail -n 1 | awk -F: '{print $1}')
-    if [ -z "$SOCK" ]; then
-      return 1
-    fi
-    export SSH_AUTH_SOCK=$SOCK
-  fi
+      ;;
+    -a | --auto)
+      # Choose the last one, as they are sorted numerically by how many keys they have
+      sock=$(sfa_print_choose_menu | tail -n -1)
+      [[ -z "$sock" ]] && sfa_die 'Something went wrong, the socket definition was empty.\n'
+      printf 'sock=<%s>\n' "$sock"
+      export SSH_AUTH_SOCK=$sock
+      ;;
+    *)
+  esac
 
-  # set agent pid
+  # set agent pid - this is unreliable as the pid may be of the child rather than the agent
   if [ -n "$SSH_AUTH_SOCK" ]; then
     export SSH_AGENT_PID=$(($(basename "$SSH_AUTH_SOCK" | cut -d. -f2) + 1))
   fi
@@ -194,8 +193,9 @@ set_ssh_agent_socket() {
   return 0
 }
 
-_sfa_usage() {
+sfa_usage() {
   printf 'ssh-find-agent <[-c|--choose|-a|--auto|-h|--help]>\n'
+  return 1
 }
 
 # Renamed for https://github.com/wwalker/ssh-find-agent/issues/12
@@ -208,20 +208,12 @@ ssh_find_agent() {
   _live_agent_sock_list=()
 
   case $1 in
-    -c | --choose)
-      set_ssh_agent_socket -c
+    -c | --choose | -a | --auto)
+      sfa_set_ssh_agent_socket "$1"
       return $?
-      ;;
-    -a | --auto)
-      set_ssh_agent_socket
-      return $?
-      ;;
-    "")
-      sfa_print_choose_menu -i
-      return 0
       ;;
     *)
-      _sfa_usage
+      sfa_usage
       ;;
   esac
 }
