@@ -43,15 +43,14 @@ ssh-find-agent.sh: 'timeout' command could not be found:
 EOF
 fi
 
-sfa_die() {
-  sfa_debug_print "$@"
-  break 20
+sfa_err() {
+  # shellcheck disable=SC2059
+  printf "$@" 1>&2
 }
 
-sfa_debug_print() {
+sfa_debug() {
   if (( _DEBUG > 0 )); then
-    # shellcheck disable=SC2059
-    printf "$@" 1>&2
+    sfa_err "$@" 1>&2
   fi
 }
 
@@ -62,7 +61,7 @@ sfa_find_all_agent_sockets() {
     find "$_TMPDIR" -maxdepth 2 -type s -name ssh 2>/dev/null | grep '/keyring-.*/ssh$'
     find "$_TMPDIR" -maxdepth 2 -type s -regex '.*/ssh-.*/agent..*$' 2>/dev/null
   )
-  sfa_debug_print "$_ssh_agent_sockets"
+  sfa_debug "$_ssh_agent_sockets"
 }
 
 sfa_test_agent_socket() {
@@ -70,23 +69,24 @@ sfa_test_agent_socket() {
   SSH_AUTH_SOCK=$socket timeout 0.4 ssh-add -l 2>/dev/null >/dev/null
   result=$?
 
-  sfa_debug_print $result
+  sfa_debug $result
 
   case $result in
     0)
       # contactible and has keys loaded
-      _key_count=$(SSH_AUTH_SOCK=$socket ssh-add -l 2>&1 | grep -c 'error fetching identities for protocol 1: agent refused operation')
+      {
+        OIFS="$IFS"
+        IFS=$'\n'
+        # shellcheck disable=SC2207
+        _keys=($(SSH_AUTH_SOCK=$socket ssh-add -l 2>/dev/null))
+        IFS="$OIFS"
+      }
+      _live_agent_list+=("${#_keys[@]}:$socket")
+      return 0
       ;;
-    1)
-      printf 'secket (%s) is dead, removing it.\n' "$socket"
-      echo "rm -rf ${socket%/*}"
-      rm -rf "${socket%/*}"
-      #   # contactible but no keys loaded
-      #   _key_count=0
-      ;;
-    2 | 124)
+    1 | 2 | 124)
       # socket is dead, delete it
-      printf 'secket (%s) is dead, removing it.\n' "$socket"
+      printf 'socket (%s) is dead, removing it.\n' "$socket"
       echo "rm -rf ${socket%/*}"
       rm -rf "${socket%/*}"
       ;;
@@ -129,14 +129,14 @@ sfa_print_choose_menu() {
   # verify each socket, discarding if dead
   # the live sockets go into $_live_agent_list[]
   sfa_verify_sockets
-  sfa_debug_print '<%s>\n' "${_live_agent_list[@]}"
+  sfa_debug '<%s>\n' "${_live_agent_list[@]}"
 
   # shellcheck disable=SC2207
   IFS=$'\n' _sorted_live_agent_list=($(sort -u <<<"${_live_agent_list[*]}"))
   unset IFS
 
-  sfa_debug_print "SORTED:\n"
-  sfa_debug_print '    <%s>\n' "${_sorted_live_agent_list[@]}"
+  sfa_debug "SORTED:\n"
+  sfa_debug '    <%s>\n' "${_sorted_live_agent_list[@]}"
 
   local i=0
   local sock
@@ -171,11 +171,11 @@ sfa_set_ssh_agent_socket() {
     -c | --choose)
       sfa_print_choose_menu -i
 
-      ((0 == ${#_live_agent_list[@]})) && sfa_die 'No agents found.\n'
+      ((0 == ${#_live_agent_list[@]})) && { sfa_err 'No agents found.\n' ; return 1; }
 
       read -p "Choose (1-${#_live_agent_sock_list[@]})? " -r choice
       if [ "$choice" -eq "$choice" ]; then
-        [[ -z "${_live_agent_sock_list[$choice]}" ]] && sfa_die 'Invalid choice.\n'
+        [[ -z "${_live_agent_sock_list[$choice]}" ]] && { sfa_err 'Invalid choice.\n' ; return 1; }
         printf 'Setting export SSH_AUTH_SOCK=%s\n' "${_live_agent_sock_list[$choice]}"
         export SSH_AUTH_SOCK=${_live_agent_sock_list[$choice]}
       fi
@@ -183,7 +183,7 @@ sfa_set_ssh_agent_socket() {
     -a | --auto)
       # Choose the last one, as they are sorted numerically by how many keys they have
       sock=$(sfa_print_choose_menu | tail -n -1)
-      [[ -z "$sock" ]] && sfa_die 'Something went wrong, the socket definition was empty.\n'
+      [[ -z "$sock" ]] && { sfa_err 'Something went wrong, the socket definition was empty.\n' ; return 1; }
       printf 'sock=<%s>\n' "$sock"
       export SSH_AUTH_SOCK=$sock
       ;;
