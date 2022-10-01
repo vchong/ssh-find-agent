@@ -78,12 +78,17 @@ sfa_test_agent_socket() {
       _key_count=$(SSH_AUTH_SOCK=$socket ssh-add -l 2>&1 | grep -c 'error fetching identities for protocol 1: agent refused operation')
       ;;
     1)
-      # contactible but no keys loaded
-      _key_count=0
+      printf 'secket (%s) is dead, removing it.\n' "$socket"
+      echo "rm -rf ${socket%/*}"
+      rm -rf "${socket%/*}"
+      #   # contactible but no keys loaded
+      #   _key_count=0
       ;;
     2 | 124)
       # socket is dead, delete it
-      rm -rf "${socket%/*}" 1>/dev/null 2>&1
+      printf 'secket (%s) is dead, removing it.\n' "$socket"
+      echo "rm -rf ${socket%/*}"
+      rm -rf "${socket%/*}"
       ;;
     125 | 126 | 127)
       printf 'timeout returned <%s>\n' "$result" 1>&2
