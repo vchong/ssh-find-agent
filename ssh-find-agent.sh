@@ -86,15 +86,15 @@ sfa_test_agent_socket() {
       ;;
     1 | 2 | 124)
       # socket is dead, delete it
-      printf 'socket (%s) is dead, removing it.\n' "$socket"
+      sfa_err 'socket (%s) is dead, removing it.\n' "$socket"
       echo "rm -rf ${socket%/*}"
       rm -rf "${socket%/*}"
       ;;
     125 | 126 | 127)
-      printf 'timeout returned <%s>\n' "$result" 1>&2
+      sfa_err 'timeout returned <%s>\n' "$result" 1>&2
       ;;
     *)
-      printf 'Unknown failure timeout returned <%s>\n' "$result" 1>&2
+      sfa_err 'Unknown failure timeout returned <%s>\n' "$result" 1>&2
       ;;
   esac
 
@@ -184,7 +184,7 @@ sfa_set_ssh_agent_socket() {
       # Choose the last one, as they are sorted numerically by how many keys they have
       sock=$(sfa_print_choose_menu | tail -n -1)
       [[ -z "$sock" ]] && { sfa_err 'Something went wrong, the socket definition was empty.\n' ; return 1; }
-      printf 'sock=<%s>\n' "$sock"
+      sfa_err 'sock=<%s>\n' "$sock"
       export SSH_AUTH_SOCK=$sock
       ;;
     *)
@@ -199,7 +199,7 @@ sfa_set_ssh_agent_socket() {
 }
 
 sfa_usage() {
-  printf 'ssh-find-agent <[-c|--choose|-a|--auto|-h|--help]>\n'
+  sfa_err 'ssh-find-agent <[-c|--choose|-a|--auto|-h|--help]>\n'
   return 1
 }
 
