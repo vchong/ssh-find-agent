@@ -66,13 +66,13 @@ sfa_find_all_agent_sockets() {
 
 sfa_test_agent_socket() {
   local socket=$1
-  SSH_AUTH_SOCK=$socket timeout 0.4 ssh-add -l 2>/dev/null >/dev/null
+  SSH_AUTH_SOCK=$socket timeout 0.4 ssh-add -l # 2>/dev/null >/dev/null
   result=$?
 
   sfa_debug $result
 
   case $result in
-    0|141)
+    0 | 1 | 141)
       # contactible and has keys loaded
       {
         OIFS="$IFS"
@@ -84,7 +84,7 @@ sfa_test_agent_socket() {
       _live_agent_list+=("${#_keys[@]}:$socket")
       return 0
       ;;
-    1 | 2 | 124)
+    2 | 124)
       # socket is dead, delete it
       sfa_err 'socket (%s) is dead, removing it.\n' "$socket"
       echo "rm -rf ${socket%/*}"
