@@ -183,7 +183,7 @@ sfa_set_ssh_agent_socket() {
     -a | --auto)
       # Choose the last one, as they are sorted numerically by how many keys they have
       sock=$(sfa_print_choose_menu | tail -n -1)
-      [[ -z "$sock" ]] && { sfa_err 'Something went wrong, the socket definition was empty.\n' ; return 1; }
+      [[ -z "$sock" ]] && return 1
       sfa_debug 'export SSH_AUTH_SOCK=%s\n' "$sock"
       export SSH_AUTH_SOCK=$sock
       ;;
