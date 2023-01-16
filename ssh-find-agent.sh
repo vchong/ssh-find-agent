@@ -66,9 +66,11 @@ sfa_find_all_agent_sockets() {
 
 sfa_test_agent_socket() {
   local socket=$1
-  SSH_AUTH_SOCK=$socket timeout 0.4 ssh-add -l # 2>/dev/null >/dev/null
+  local output
+  output=$(SSH_AUTH_SOCK=$socket timeout 0.4 ssh-add -l 2>&1)
   result=$?
 
+  [[ "$output" == "error fetching identities: communication with agent failed" ]] && result=2
   sfa_debug $result
 
   case $result in
